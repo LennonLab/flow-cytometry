@@ -1,0 +1,146 @@
+---
+title: "Flow Cytometry Data Analysis Tutorial"
+author: "bioinformatics.ca with modifications by M.L. Larsen"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+output: pdf_document
+fontsize: 11pt
+geometry: margin = 0.75in
+---
+
+#Overview
+
+Flow cytometry data is often complex and can be difficult to analyze without the appropriate tools.
+In this handout, you will learn how to import FCS data, create custom gates, and process the information per event to evaluate sample variation.
+
+**This documentation was generated from the bioinformatics.cs [workshop](http://bioinformatics.ca/workshops/2013/flow-cytometry-data-analysis-using-r-2013#material) on processing flow cytometry data**
+
+##Document workflow
+###Work environment
+###1. Data collection
+###2. Visual data exploration
+###3. 1D static gating
+###4. 1D Staitc gating
+###5. 1D Dynamic gating
+###6. Clustering and Additional FCM tools
+###7. Example: Analyzing DNA/RNA content in bacterial cells
+####7.1 Data collection and methodology
+####7.2 Explore data
+####7.3 Create gates for analysis
+
+____
+
+Set up your local work environment and load the packages needed for the data analysis
+
+```{r,echo=FALSE}
+sessionInfo()$R.version$version.string
+packinfo <- installed.packages(fields = c("Package","Version"))
+#packinfo["vegan",c("Package","Version")]
+```
+
+```{r, echo=FALSE, results='hide', message = FALSE, warning = FALSE}
+rm(list = ls())
+getwd()
+
+#setwd("~/GitHub/Cstat_Communities")
+setwd("C:/Users/Megan/GitHub/Cstat_Communities")
+
+# Install bioconductor
+#source("http://bioconductor.org/biocLite.R")
+
+# Install bioconductor packages. This process will take a bit of time, so be patient.
+#biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
+           "flowClust","flowQ", "flowUtils","flowMeans","flowDensity"))
+
+# Install and load packages, source code, and dependencies
+library(flowPeaks); library(flowCore); library(flowStats); library(flowViz)
+library(flowQ); library(flowClust); library(flowUtils); library(flowMeans); library(flowDensity)
+
+```
+
+Each bioconductor package comes with a vignette that provides a task-oriented description of the functionality. Let's take a look at one.
+
+```{r, results=hide}
+browseVignettes(package - "flowMeans")
+```
+
+#1. Data collection
+
+
+#2. Exploring FCM data
+
+Let's start by importing our tutorial data file. 
+
+```{r}
+# Import data as a flowFrame object which includes the meta data collected from the analyzer
+
+f <- read.fcs("./tutorial/data/tutorialdata.fcs")
+f
+
+colnames(f)  # Channel labels
+
+# Expression values for each event
+E <- exprs(f)
+dim(E)
+
+# Let's look at the first 10 rows of E
+E[1:10,]
+
+# This provides the keyword information stored in the file
+f@description
+
+# Specific keyword
+f@description$P9DISPLAY
+
+#Access paramter info such as a range of expression values for range of expression values
+# here we are doing it for forward-scatter light
+f@parameters@data
+f@parameters@data[1, c("minRange", "maxRange")]
+
+```
+
+Let's plot this scheet which is part of the package **flowViz**
+```{r}
+plot(f, 
+     c("FSC-A", "SSC-A"), 
+     xlim = c(-111,200), ylim = c(), 
+     smooth = FALSE)
+
+# SSC-A is the third parameter (P3) and the meta-date will tell us to view it on log scale
+colnames(f)[3]
+
+f@description$"P3DISPLAY"
+# Cool, so 'f' is an ibject for a single flowFrame object, holding a single FCS file
+# Let's make an obejct out of a set of FCS files using the flowSet command
+# Note, it's kind of weird if you have FCS files from different machines, so make sure
+# that your directory is from a single machine
+fs <- read.flowSet(path= 'Janthino/', pattern = ".fcs")
+fs
+
+# Let's look at the metadata
+sampleNames(fs)
+length(fs)
+
+# flowSet objects are sort of like lists in that you can access the first frame by index or name
+fs[["041515_J_1.fcs"]]
+fs[[1]]
+
+# Now we can use fsApply to get event counts for all samples
+nrow(fs[[1]])
+fsApply(fs, nrow)
+
+# fsApply can be used to extract the TUBE NAME keyword
+# you want this for identifying control or stained tubes or various treatments, whatever
+# This depends on you ACTUALLY SPECIFYING THIS during your FC run with Christiane
+fsApply(fs, function(f) f@description$"TUBE NAME")
+```
+
+#3. Preprocessing and Quality Assurance
+#4. 1D Staitc gating
+#5. 1D Dynamic gating
+#6. Clustering and Additional FCM tools
+#7. Example: Analyzing DNA/RNA content in bacterial cells
+##7.1Data collection and methodology
+##7.2Explore data
+##7.3Create gates for analysis
