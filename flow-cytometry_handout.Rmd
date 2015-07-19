@@ -43,14 +43,14 @@ packinfo <- installed.packages(fields = c("Package","Version"))
 rm(list = ls())
 getwd()
 
-#setwd("~/GitHub/Cstat_Communities")
-setwd("C:/Users/Megan/GitHub/Cstat_Communities")
+#setwd("~/GitHub/flow-cytometry")
+setwd("C:/Users/Megan/GitHub/flow-cytometry")
 
 # Install bioconductor
-#source("http://bioconductor.org/biocLite.R")
+source("http://bioconductor.org/biocLite.R")
 
 # Install bioconductor packages. This process will take a bit of time, so be patient.
-#biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
+biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
            "flowClust","flowQ", "flowUtils","flowMeans","flowDensity"))
 
 # Install and load packages, source code, and dependencies
