@@ -7,9 +7,9 @@ PDF and MP4 files are available for the course on the homepage.
 ### Directories
 **bin**
 
-**data**
+**tutorial** This directory contains a tutorial and accompanying data for understanding the processes involved in analyzing flow cytometry data using R and bioConductor modules.
 
-**tutorial**
+**ADD-pipeline** This directory contains an RMarkdown file to walk through processing data collected for quantifying active (A), dormant (D), and dead (D) microbial populations.
 
 ##Contributors
 [Megan Larsen](http://meganllarsen.wordpress.com): PhD candidate in the [Lennon Lab](http://www.indiana.edu/~microbes/)
