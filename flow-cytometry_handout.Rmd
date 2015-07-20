@@ -46,29 +46,40 @@ getwd()
 #setwd("~/GitHub/flow-cytometry")
 setwd("C:/Users/Megan/GitHub/flow-cytometry")
 
-# Install bioconductor
+# load source code 
 source("http://bioconductor.org/biocLite.R")
+#source("supportCode/flowPrep.R")
+#source("supportCode/support_functions.R")
 
 # Install bioconductor packages. This process will take a bit of time, so be patient.
-biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
-           "flowClust","flowQ", "flowUtils","flowMeans","flowDensity"))
+#biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
+#           "flowClust","flowQ", "flowUtils","flowMeans","flowDensity"))
+#biocLite("GEOmap")
+#biocLite("Logicle")
 
 # Install and load packages, source code, and dependencies
-library(flowPeaks); library(flowCore); library(flowStats); library(flowViz)
-library(flowQ); library(flowClust); library(flowUtils); library(flowMeans); library(flowDensity)
+library(flowPeaks); library(flowCore); #library(flowStats); 
+#library(flowViz); library(flowQ); 
+library(flowClust); library(flowUtils); library(flowMeans); library(flowDensity)
+library(GEOmap)
+#library(Logicle)
 
 ```
 
 Each bioconductor package comes with a vignette that provides a task-oriented description of the functionality. Let's take a look at one.
 
 ```{r, results=hide}
-browseVignettes(package - "flowMeans")
+browseVignettes(package = "flowMeans")
 ```
 
 #1. Data collection
+For this tutorial, we will be using a data set collected from an HIV study. [data source] (http://flowrepository.org/id/FR-FCM-ZZZK)
 
+```{r}
 
-#2. Exploring FCM data
+```
+
+#2. Module 2: Exploring FCM data
 
 Let's start by importing our tutorial data file. 
 
