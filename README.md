@@ -1,15 +1,29 @@
-## Flow Cytometry Data Analysis using R
+## Assessing community microbial community activity with flow cytometry 
 
-This repository contains open-source code and data to learn how to process, analyze, and visualize flow cytometry data based on a 2013 course from the [Canadian Bioinformatics Workshop](http://bioinformatics.ca/workshops/2013/flow-cytometry-data-analysis-using-r-2013). 
-PDF and MP4 files are available for the course on the homepage.
+This repository contains open-source code and data to process, analyze, and visualize microbial activity using flow cytometry. 
 
 ##Contents
-### Directories
-**bin**
+### Directories and Files
+**analyses** This directory contains the analyses required for processing data collected to quantify active (A), dormant (D), and dead (D) microbial populations.
+
+**bin** This directory contains source code needed for the analysis of flow cytometry data.
+
+**data**
+
+**figures**
+
+**output** This directory contains quality assessment output data for the analyzed samples
 
 **tutorial** This directory contains a tutorial and accompanying data for understanding the processes involved in analyzing flow cytometry data using R and bioConductor modules.
 
-**ADD-pipeline** This directory contains an RMarkdown file to walk through processing data collected for quantifying active (A), dormant (D), and dead (D) microbial populations.
+* ***test_data*** flow cytometry data associated with *E. coli* cultures
+* ***flow_cytometry.Rmd***/***flow_cytometry.pdf*** Scripting tutorial for assessing microbial activity 
+
+
 
 ##Contributors
 [Megan Larsen](http://meganllarsen.wordpress.com): PhD candidate in the [Lennon Lab](http://www.indiana.edu/~microbes/)
+
+William Shoemaker
+
+Jay Lennon
