@@ -6,18 +6,18 @@ This repository contains open-source code and data to process, analyze, and visu
 ### Directories and Files
 **analyses** This directory contains the analyses required for processing data collected to quantify active (A), dormant (D), and dead (D) microbial populations.
 
+* ***ActivityFlowCytometry.Rmd*** Rmarkdown file for figure generation
+* ***flowDataScript.R*** script code to generate population data. This script must be run for every batch experiment (*i.e.* timecourse culture, environmental group).
+
 **bin** This directory contains source code needed for the analysis of flow cytometry data.
 
 **data**
 
 **figures**
 
-**output** This directory contains quality assessment output data for the analyzed samples
+**Quality Assurance (QA)** This directory contains quality assessment output data for the analyzed samples
 
-**tutorial** This directory contains a tutorial and accompanying data for understanding the processes involved in analyzing flow cytometry data using R and bioConductor modules.
-
-* ***test_data*** flow cytometry data associated with *E. coli* cultures
-* ***flow_cytometry.Rmd***/***flow_cytometry.pdf*** Scripting tutorial for assessing microbial activity 
+**temp_retired** 
 
 
 

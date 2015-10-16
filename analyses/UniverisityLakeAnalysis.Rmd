@@ -1,0 +1,31 @@
+---
+title: "Flow cytometry analysis of active, dormant, and dead microbial populations in University Lake (Bloomington, IN)"
+author: "M.L. Larsen"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+output: pdf_document
+fontsize: 11pt
+geometry: margin = 0.75in
+---
+#Overview
+
+The microbes within communities have wide ranging metabolic activities that are influenced by resource availability.
+We can classify their metabolic activity with DNA and RNA content. Here, we seek to enumerate the fractions of the active (greater RNA than DNA), dormant (less RNA to DNA), and dead populations of microbes within freshwater ecosystems.
+
+##Document workflow
+1. Setup work environment
+
+
+## University Lake Time Series analysis
+
+### Temporal trends 
+With the data file created previously, we now have a way to look at the temporal trends associated with the microbial community in University Lake. 
+
+```{r UniLake_TS, include=FALSE}
+#Load data files
+ts.dat <- read.csv("./data/UniLake_EnvDat.csv", header = T)
+flow.dat <- read.csv("./data/UniLake_PopDat.csv", header = T)
+
+ul.dat <- merge(ts.dat,flow.dat, by = "sample.id")
+```
