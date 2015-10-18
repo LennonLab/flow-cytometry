@@ -1,0 +1,742 @@
+---
+title: "Flow cytometry workflow for active, dormant, and dead microbial populations"
+author: "M.L. Larsen"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+output: pdf_document
+fontsize: 11pt
+geometry: margin = 0.75in
+---
+
+#Overview
+
+The microbes within communities have wide ranging metabolic activities that are influenced by resource availability.
+We can classify their metabolic activity with DNA and RNA content. Here, we seek to enumerate the fractions of the active (greater RNA than DNA), dormant (less RNA to DNA), and dead populations of cultured strains and environmental communities.
+
+##Document workflow
+1. Setup work environment, load flow cytometry data for processing
+2. Diagnostics with control data
+3. Define static and dynamics gates
+4. Process data files
+5. University Lake Time Series Analysis
+6. Indiana Ponds Analysis
+
+##Data Collection
+
+Data for this project were collected as part of a long term sampling regime on University Lake in Bloominton, Indiana and wildlife refuge ponds scattered through south central Indiana. All data were collected in the Indiana University Flow Cytometry Core Facility operated by Christiane Hassel and processed by M.L. Larsen.
+
+##Data Processing
+1. R Version and Package information
+
+Source code used in this workflow were provided by R. Nikolic. 
+
+```{r, echo=FALSE,results='hide', message=FALSE, warning=FALSE}
+# Setup working environment
+rm(list = ls())
+setwd("C:/Users/Megan/Github/flow-cytometry/")
+
+# Load source code and dependances
+## for installation of bioconductor packages
+source("http://bioconductor.org/biocLite.R")
+source("./bin/flowPrep.R") 
+source("./bin/support_functions.R")
+
+# Install bioconductor packages. This process will take a bit of time, so be patient.
+#biocLite(c("flowPeaks","flowCore","flowStats","flowViz",
+#           "flowClust","flowQ", "flowUtils","flowMeans","flowDensity"))
+#biocLite("GEOmap");biocLite("Logicle")
+#biocLite("flowQ")
+#biocLite("S4Vectors")
+#biocLite("quantreg")
+
+# Load bioconductor and stats packages
+library(S4Vectors)
+library(quantreg)
+library(flowPeaks)  
+library(flowCore)   
+library(flowStats)  
+library(flowViz)    
+library(flowQ)      
+library(flowClust)  
+library(flowUtils)  
+library(flowMeans) 
+library(flowDensity)
+library(GEOmap)     
+#library(Logicle)
+library(ggplot2)
+```
+
+All analyses were completed with `r sessionInfo()$R.version$version.string` and the following packages: 
+
+```{r,echo=FALSE,results='hide'}
+
+#for each in list...
+
+packinfo <- installed.packages(fields = c("Package","Version"))
+
+packinfo <- installed.packages(fields = c("Package","Version"))
+flowcore <- packinfo["flowCore",c("Package","Version")]
+flowstats <- packinfo["flowStats",c("Package","Version")]
+flowviz <- packinfo["flowViz",c("Package","Version")]
+flowUtils <- packinfo["flowUtils",c("Package","Version")]
+flowMeans <- packinfo["flowMeans",c("Package","Version")]
+flowq <- packinfo["flowQ",c("Package","Version")]
+```
+
+
+|  *Package* | *Version*          | *Module Description* |
+|:--------:|:---------:       |-------------|
+| flowCore |`r flowcore[2]`   |  data gating           |
+| flowQ    |`r flowq[2]`         | flow data quality assurance            |
+| flowViz  |`r flowviz[2]`    |  visualization of flow data           |
+
+# 1. Load data
+The data for this project were collected in the IU Flow Cytometry Core Facility (C. Hassel) using eFluor fixed viability dye, Hoescht 33342, and Pyronin Y. 
+
+```{r kable, echo=FALSE, results='markup', message=FALSE, warning=FALSE}
+library(knitr)
+
+# Import data
+## This set includes all the single color controls
+## the column.pattern call imports only data that are associated with the -A columns
+
+# If loading info from server
+#fs.controls <- read.flowSet(path = 'S:/FlowCytometry-INPonds/bch061815-controls', 
+#                            pattern = ".fcs", transformation = FALSE,
+#                            #alter.names = TRUE, column.pattern = ".A")
+#                            column.pattern = "-A")
+
+# If loading from harddrive
+fs.controls <- read.flowSet(path = 'F:/FlowCytometry-INPonds/bch061815-controls', 
+                            pattern = ".fcs", transformation = FALSE,
+                            #alter.names = TRUE, column.pattern = ".A")
+                            column.pattern = "-A")
+
+fs.controls
+#kable(summary(fs.controls))
+#sampleNames(fs.controls)
+```
+
+This experiment contains `r length(fs.controls)` samples.
+
+#2. Diagnostics with control data
+## 2.1 Initial Visualization
+
+```{r,echo=FALSE,eval=FALSE}
+sampleNames(fs.controls)
+length(fs.controls)
+nrow(fs.controls[[1]])
+fsApply(fs.controls,nrow)
+
+fsApply(fs.controls, function(f) f@description$"TUBE NAME")
+
+colnames(fs.controls)
+
+```
+
+Diagnostically evaluating the control data can help establish instrument malfunction, poor run quality, or the need for data preprocessing (**e.g.** compensations, transformation, etc.). `flowViz` provides the functionality to visually evaluate the data while `flowQ` analyzes data quality assurance. 
+
+Bivariate density plots between stained and unstained samples show shifts in the data clustering (Figure 3 B,D). The *E. coli* standards in our control batch show very similar distributions in the FSC v SSC plots, however, the distribution changes substantially with the Pacific Blue v PI plot because of the presence of the stain in the cells. We should expect a diagnol shift up in the stained group.
+
+```{r Figure 3.,echo=FALSE,results='hide', fig.cap="Figure 3. Bivariate density plots of stained and unstained E. coli populations", fig.height=5,fig.width=7.5}
+par(mfrow = c(2,2))
+
+par(mar = c(5,6,4,1))
+plot(fs.controls[[6]][1:10000,], 
+     c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000),
+     ylim = c(0,50000), 
+     main = "unstained E. coli",
+     smooth = FALSE)
+text(25,48000,"A", col = "black",bg = "white")
+
+plot(fs.controls[[7]][1:10000,], 
+     c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     main = "Double (H/Py) stained E. coli",
+     smooth = FALSE)
+text(25,48000,"B", col = "black",bg = "white")
+
+par(mar = c(5,6,2,1))
+plot(fs.controls[[6]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"C", col = "black",bg = "white")
+
+plot(fs.controls[[7]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"D", col = "black",bg = "white")
+```
+
+## 2.2 Preprocessing
+### 2.2.1 Compensation
+
+Compensation is a normalization step by which excess fluorescence from the events read is removed.
+
+```{r,results='hide'}
+fs.controls[[1]]@description$'SPILL'
+
+fs.controls.comp <- fsApply(fs.controls,function(frame){
+  #extract compensation matrix from keywords
+  comp <- keyword(frame)$`SPILL`
+  new_frame <- compensate(frame,comp)
+  new_frame
+})
+
+fs.controls.comp
+summary(fs.controls.comp)
+```
+
+### 2.2.2 Visualize and Remove Margin events
+
+Boundary, or marginal events, are common in the generation of flow cytometry data and should be considered as noise. These are events that fall out of the dynamic range that the flow cytometer can detect a signal. Before moving forward with the transformation, we must first classify and remove these boundary events with `flowQ` and **qaProcess.marginevents**, **qaProcess.cellnumber**, **qaProcess.timeline** and **qaProcess.timeflow**.
+
+```{r,echo=FALSE}
+# Plot foward and side scatter
+par(mfrow = c(1,1), mar = c(5,6,4,1))
+plotDens(fs.controls.comp[[7]][1:10000,], 
+     c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,200000), 
+     ylim = c(0,50000), 
+     las =1,
+     main = "H/Py stained E. coli",
+     devn = FALSE)
+
+# set the directory for output and figure generation
+dest <- file.path('./output', "flowQ")
+
+# Creates the necessary output for categorizing margin events.
+# Use the cFactor call to indicate the number of standard deviations
+#qp1 <- qaProcess.marginevents(fs.controls.comp, 
+#                              channels = c("FSC PMT-A", "SSC-A"),
+#                              cFactor = 2,
+#                              outdir = dest, pdf =FALSE)
+
+# qaProcess.cellnumber function identifies outliers in a flowSet based on the event distribution for the whole flowSet
+#qp2 <- qaProcess.cellnumber(fs.controls.comp, cFactor = 2, 
+#                            outdir = dest, pdf = TRUE)
+```
+
+
+#### 2.2.2.1 Time Anomalies
+
+**qaProcess.timeflow** & **qaProcess.timeline** can be used to detect disturbances in flow over time. Good even, flow through the machine shows that the instrument is running smoothely. These timeflow plots visualize acquisition rate over time, so the number of events that are
+recorded in a given time interval.  The summary QA report for all the data in a **flowSet** can be found in the output. 
+
+```{r, echo=FALSE}
+#qp3 <- qaProcess.timeline(fs.comtrols.comp, channels = "FSC PMT-A", 
+#                          outdir = dest,
+#                          cutoff = 1, pdf = TRUE)
+#qp4 <- qaProcess.timeflow(fs.controls.comp, channels = "FSC PMT-A", 
+#                          outdir = dest,
+#                            cutoff = 2, pdf = TRUE)
+#url <- writeQAReport(fs.controls.comp, processes = list(qp1, qp2, qp3, qp4), 
+#                     outdir =dest, pdf = T)
+# Things look pretty good from the summary
+
+```
+
+
+Based on the QA analysis, this flowset is ready for to be checked for transformation. However, there may be some cases where the marginal events need to be removed and/or the data normalized.
+
+
+### 2.2.3 Transformation
+
+Data transformations can be done in-line or out-of-line techniques. Using the compenstated data, 
+For more information about choosing the appropriate transformation, see Spidlen et al. 2006.
+
+```{r control_transformation, echo=FALSE,results='hide',warning=FALSE, fig.width=4, fig.height=4}
+
+# using the E.coli stained sample
+samp <- fs.controls.comp[[7]]
+
+# Channels for transformation
+chnls <- colnames(fs.controls.comp)[1:7]
+lgcl <- estimateLogicle(samp, channels = chnls)
+after <- transform(samp, lgcl)
+
+# plot window
+#par(mfrow = c(1,2))
+#plot(samp)
+#plot(after)
+
+# Apply transformation to entire control flowset
+fs.trans <- lgcl %on% fs.controls.comp
+```
+
+```{r ,echo=FALSE,results='hide', fig.height=5,fig.width=7.5}
+#Create plots to demonstrate differences before and after transformation
+
+par(mfrow = c(2,3))
+
+par(mar = c(5,6,4,1))
+plot(fs.controls[[6]], 
+      c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"A", col = "black",bg = "white")
+
+plot(fs.controls.comp[[6]], 
+      c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"B", col = "black",bg = "white")
+
+plot(fs.trans[[6]], 
+      c("FSC PMT-A", "SSC-A"), 
+#     xlim = c(0,50000), 
+#     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"C", col = "black",bg = "white")
+
+plot(fs.controls[[7]], 
+     c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"D", col = "black",bg = "white")
+
+plot(fs.controls.comp[[7]], 
+      c("FSC PMT-A", "SSC-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"E", col = "black",bg = "white")
+
+plot(fs.trans[[7]], 
+      c("FSC PMT-A", "SSC-A"), 
+#     xlim = c(0,50000), 
+#     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"F", col = "black",bg = "white")
+```
+
+```{r ,echo=FALSE,results='hide', fig.height=5,fig.width=7.5}
+par(mfrow = c(2,3))
+
+par(mar = c(5,6,4,1))
+plot(fs.controls[[6]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"A", col = "black",bg = "white")
+
+plot(fs.controls.comp[[6]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"B", col = "black",bg = "white")
+
+plot(fs.trans[[6]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+#     xlim = c(0,50000), 
+#     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"C", col = "black",bg = "white")
+
+plot(fs.controls[[7]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"D", col = "black",bg = "white")
+
+plot(fs.controls.comp[[7]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     xlim = c(0,50000), 
+     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"E", col = "black",bg = "white")
+
+plot(fs.trans[[7]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+#     xlim = c(0,50000), 
+#     ylim = c(0,50000), 
+     smooth = FALSE)
+text(25,48000,"F", col = "black",bg = "white")
+```
+
+## 3. Define gates/filters using flowDensity
+
+A flow cytometry `workFlow` object uses filters, or gates, that are related to the fluorescence of the eFluor 660 (a fixed viability dye), Hoechst 33342, or Pyronin-Y. This process uses all of the information to construct informational sorting for the data sets.
+
+|  *Stain*                    | *Activity*            | *Use* |
+|:--------:                   |:---------:            |-------------|
+| Molecular Probes eFluor 660 |fixed viablility dye   | Live vs. dead            |
+| Hoechst 33342               |DNA specific binding   | Active vs. dormant            |
+| Pyronin Y                   |RNA specific binding   | Active vs. dormant            |
+
+For each of the single color controls, we use static gating to create the initial gate sets.
+After constructing filters, we can then count populations of events. 
+
+Let's look at the data in their respective channels. 
+
+```{r, echo=FALSE,results='hide',fig.width=8,fig.height=10.5, warning=FALSE}
+#for i in length of sampleNames(fs.controls.comp.tf)
+
+par(mfrow = c(5,3))
+
+plot(fs.trans[[5]], 
+     c("SSC-A", "APC-A"), 
+     xlim = c(0,15000),
+     #ylim = c(0,500), 
+     main = "Live/Dead Gate",
+     devn=FALSE)
+
+plot(fs.trans[[5]], 
+     c("FSC-A", "Alexa Fluor 488-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Beads",
+     devn=FALSE)
+
+plot(fs.trans[[5]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "H/PY",
+     devn=FALSE)
+
+plot(fs.trans[[3]], 
+     c("SSC-A", "APC-A"), 
+     xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Live/Dead Gate",
+     devn=FALSE)
+
+plot(fs.trans[[3]], 
+     c("FSC-A", "Alexa Fluor 488-A"), 
+     xlim = c(0,5000),
+     #ylim = c(0,3000), 
+     main = "Beads",
+     devn=FALSE)
+
+plot(fs.trans[[3]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "H/PY",
+     devn=FALSE)
+plot(fs.trans[[1]], 
+     c("SSC-A", "APC-A"), 
+     xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Live/Dead Gate",
+     devn=FALSE)
+
+plot(fs.trans[[1]], 
+     c("FSC-A", "Alexa Fluor 488-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Beads",
+     devn=FALSE)
+
+plot(fs.trans[[1]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "H/PY",
+     devn=FALSE)
+plot(fs.trans[[4]], 
+     c("SSC-A", "APC-A"), 
+     xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Live/Dead Gate",
+     devn=FALSE)
+
+plot(fs.trans[[4]], 
+     c("FSC-A", "Alexa Fluor 488-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Beads",
+     devn=FALSE)
+
+plot(fs.trans[[4]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "H/PY",
+     devn=FALSE)
+plot(fs.trans[[2]], 
+     c("SSC-A", "APC-A"), 
+     xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Live/Dead Gate",
+     devn=FALSE)
+
+plot(fs.trans[[2]], 
+     c("FSC-A", "Alexa Fluor 488-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "Beads",
+     devn=FALSE)
+
+plot(fs.trans[[2]], 
+     c("Pacific Blue-A", "PI (B)-A"), 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     main = "H/PY",
+     devn=FALSE)
+```
+
+##3.1 Create static gates
+Creating a gate for the beads produces a standardized count for estimating population density (events/mL). Beads are most easily seen in the FSC-A v. Alexa Fluor 488. Use of the Live/Dead fixed viability dye requires that we use a negative gating process. Cells with compromised membranes will take up the stain while those with intact membranes will not.
+
+```{r RectangleGates}
+# Beads
+samp.beads <- fs.trans[[6]]
+bead.chnl <- c("FSC-A","Alexa Fluor 488-A")
+bead.cols <- c(1,4)
+beads.plot <- plotDens(samp.beads, bead.chnl, devn = FALSE,
+         xlab = "FSC-A", ylab = "Alexa Fluor 488-A", las = 1)
+
+bead.gate <- rectangleGate(filterId = "beads", 
+                           "FSC-A" = c(3.0,3.2),
+                           "Alexa Fluor 488-A" = c(0,1.25))
+
+# Live/Dead gating from eFluor 660 - based on negative staining
+## Must use unstained control and check with stained control
+control.ld <- fs.trans[[5]]
+test.ld <- fs.trans[[3]]
+ld.chnl <- c("APC-A","SSC-A")
+ld.cols <- c(2,7)
+
+plot.new()
+
+plotDens(control.ld, ld.chnl, devn = FALSE,
+         xlab = "APC-A", ylab = "SSC-A", las = 1)
+
+plotDens(test.ld, ld.chnl, devn = FALSE,
+         xlab = "APC-A", ylab = "SSC-A", las = 1)
+
+live.gate <- rectangleGate(filterId = "live",
+                         "APC-A" = c(0,max(ld.cols[1])),
+                         "SSC-A" = c(1.15,4.5))
+
+dead.gate <- rectangleGate(filterId = "dead",
+                         "APC-A" = c(max(ld.cols[[1]]),Inf))
+
+ld.filt <- kmeansFilter(filterID = "ldfilt", "APC-A" = c("live","dead"))
+
+# Test output
+bead.results <- filter(fs.trans, bead.gate)
+live.results <- filter(fs.trans, live.gate)
+dead.results <- filter(fs.trans, dead.gate)
+
+#live.dead.results <- filter(fs.trans, ld.filt)
+
+summary(bead.results)
+summary(live.results)
+summary(dead.results)
+
+# Create table of results for each sample
+## the idea here is to pull out the character values from the output and stash them
+#strsplit(output, " ")
+
+```
+
+
+```{r active-dormant_example}
+actdorm <- Subset(fs.trans, live.gate)
+actdorm
+sampleNames(actdorm)
+summary(actdorm)
+
+# function to create ratio for fluorescence
+test <- actdorm[[7]]
+
+# subset data fluorescence data from flowframe
+DNA <- exprs(test[,"Pacific Blue-A"])
+RNA <- exprs(test[,"PI (B)-A"])
+
+# Calculate RNA/DNA ratio
+RDratio <- RNA/DNA
+dat <- data.frame(DNA,RNA,RDratio)
+colnames(dat) <- c("DNA","RNA", "ratio")
+
+# Calculate population densities and relative percentages
+min <- 1-sd(RDratio); max <- 1+sd(RDratio)
+live.pop.dens <- length(RDratio[RDratio > min])
+act.pop.dens <- length(RDratio[RDratio > min & RDratio < max])
+per.dorm <- (live.pop.dens - act.pop.dens)/live.pop.dens 
+per.act <- (act.pop.dens)/live.pop.dens 
+
+# Visualize distribution
+ggplot(dat,aes(x = ratio)) + geom_density()
+
+## NEED TO ADD IN POLYGON SHADING FOR REGIONS + LABELS
+
+```
+
+```{r active-dormant_flowset}
+
+results <- matrix(NA, nrow = length(sampleNames(fs.trans)), ncol = 9)
+results <- as.data.frame(results)
+colnames(results) <- c("sample","NA","ratio.min","ratio.max",
+                       "live.dens","act.dens","dorm.dens",
+                       "act.perc","dorm.perc")
+
+for(i in 1:length(sampleNames(fs.trans))){
+  DNA <- exprs(fs.trans[[i]][,"Pacific Blue-A"])
+  RNA <- exprs(fs.trans[[i]][,"PI (B)-A"])
+  RDratio <- RNA/DNA
+  
+  dat <- data.frame(DNA,RNA,RDratio)
+  
+  #make plot
+  p <- ggplot(dat,aes(x = dat[,3])) + geom_density()
+  print(p)
+  
+  range(RDratio)
+  min <- 1-sd(RDratio)
+  max <- 1+sd(RDratio)
+  live.pop.dens <- length(RDratio[RDratio > min])
+  dorm.pop.dens <- length(RDratio[RDratio > min & RDratio < max])
+  act.pop.dens <- live.pop.dens-dorm.pop.dens
+  per.act <- (live.pop.dens - dorm.pop.dens)/live.pop.dens 
+  per.dorm <- (act.pop.dens)/live.pop.dens 
+  
+  results[i,1] <- sampleNames(fs.trans)[[i]]
+  results[i,2] <- NA
+  results[i,3] <- min
+  results[i,4] <- max
+  results[i,5] <- live.pop.dens
+  results[i,6] <- act.pop.dens
+  results[i,7] <- dorm.pop.dens
+  results[i,8] <- round(per.act*100, digits = 3)
+  results[i,9] <- round(per.dorm*100, digits = 3)
+}
+
+results
+```
+
+
+## 4. Batch sample processing
+**Active** populations are cells that have RNA > DNA
+**Dormant** population have RNA = DNA
+**Dead** population is filtered out with the fixed viability dye
+
+Create data file that contains information about the samples as well as calculations for each population following gates
+
+###4.1 Test output generation with a single batch (bch06182015-1)
+
+```{r active-dormant_batchflowset, eval = FALSE, include = FALSE}
+fs1 <- read.flowSet(path = 'F:/FlowCytometry-INPonds/bch061815-samples', 
+                             pattern = ".fcs", transformation = FALSE,
+                             #alter.names = TRUE, column.pattern = ".A")
+                             column.pattern = "-A")
+fs1
+
+# Batch compensation
+fs1[[1]]@description$'SPILL'
+
+fs1.comp <- fsApply(fs1,function(frame){
+  #extract compensation matrix from keywords
+  comp <- keyword(frame)$`SPILL`
+  new_frame <- compensate(frame,comp)
+  new_frame
+})
+
+# Batch transformation
+fs1.trans <- lgcl %on% fs1.comp
+
+# Rectangle gating results
+bead.results <- filter(fs1.trans, bead.gate)
+live.results <- filter(fs1.trans, live.gate)
+dead.results <- filter(fs1.trans, dead.gate)
+
+summary(bead.results)
+summary(live.results)
+summary(dead.results)
+
+# Subset data based on live.gate
+actdorm <- Subset(fs1.trans, live.gate)
+sampleNames(actdorm)
+
+# Gather results 
+results1 <- matrix(NA, nrow = length(sampleNames(actdorm)), ncol = 11)
+results1 <- as.data.frame(results1)
+colnames(results1) <- c("sample","ratio.min","ratio.max",
+                       "live.dens","act.dens","dorm.dens",
+                       "act.perc","dorm.perc","mean.act","median.act", "mode.act")
+
+# later iterations will need to account for beed count by sample
+bead.count <- 10000
+
+output.loc <- "C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/" 
+
+for(i in 1:length(sampleNames(actdorm))){
+  DNA <- exprs(actdorm[[i]][,"Pacific Blue-A"])
+  RNA <- exprs(actdorm[[i]][,"PI (B)-A"])
+  RDratio <- RNA/DNA
+  
+  dat <- data.frame(DNA,RNA,RDratio)
+  write.csv(dat, file = paste("C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/",sampleNames(actdorm)[[i]],".csv", sep=""))
+  head(dat)
+  
+  png(filename = paste("C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/",sampleNames(actdorm)[[i]],".png", sep=""),
+      width = 860, height = 480, units = "px", pointsize = 12,
+      bg = "white")
+  par(mfrow = c(1,2))
+  
+  plot(DNA,RNA, 
+     xlab = "DNA(Pacific Blue-A)", ylab = "RNA(Pyronin Y)", 
+     #xlim = c(0,15000),
+     #ylim = c(0,3000), 
+     las = 1, main = sampleNames(actdorm)[[i]])
+  #points(RDratio, col = "red")
+  abline(0, 1, col = "red", lwd = 2)
+  
+  d <- density(RDratio,
+               adjust = 10, kernel = "gaussian",
+               from = -1, to = 10, n = 512)
+  plot(d, las = 1, main = i)
+  
+  #p <- ggplot(dat,aes(x = dat[,3]), main = i) + geom_density() +
+  #  xlim(-1,5)
+  #print(p)
+  
+  dev.off()
+  
+  range(RDratio)
+  min <- 1 - sd(RDratio)
+  max <- 1 + sd(RDratio)
+  mean.rat <- mean(RDratio)
+  median.rat <- median(RDratio)
+  #mode.rat <- mode(RDratio)
+  
+  #densities must be divided by bead counts (10000)[# bacteria per 10^-6 mL of sample]
+  live.pop.dens <- (length(RDratio[RDratio > min])/bead.count)*1000000
+  dorm.pop.dens <- (length(RDratio[RDratio > min & RDratio < max])/bead.count)*1000000
+  act.pop.dens <- (live.pop.dens-dorm.pop.dens)
+  per.act <- (live.pop.dens - dorm.pop.dens)/live.pop.dens 
+  per.dorm <- (dorm.pop.dens)/live.pop.dens 
+  
+  results1[i,1] <- sampleNames(actdorm)[[i]]
+  results1[i,2] <- min
+  results1[i,3] <- max
+  results1[i,4] <- live.pop.dens
+  results1[i,5] <- act.pop.dens
+  results1[i,6] <- dorm.pop.dens
+  results1[i,7] <- round(per.act*100, digits = 3)
+  results1[i,8] <- round(per.dorm*100, digits = 3)
+  results1[i,9] <- mean.rat
+  results1[i,10] <- median.rat
+  results1[i,11] <- NA
+}
+
+results1
+
+write.csv(file = "C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/INPonds_flowdat.csv", results1, row.names = FALSE)
+```

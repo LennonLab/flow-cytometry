@@ -1,0 +1,85 @@
+---
+title: "Assessing community microbial community activity with flow cytometry"
+author: "M.L. Larsen, W. Shoemaker, K. Locey, and J.T. Lennon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+output: pdf_document
+fontsize: 11pt
+geometry: margin = 0.75in
+---
+
+#Project Overview
+The microbes within communities have wide ranging metabolic activities that are influenced by resource availability.
+We can classify their metabolic activity with DNA and RNA content. Here, we seek to enumerate the fractions of the active (greater RNA than DNA), dormant (less RNA to DNA), and dead populations of cultured strains and environmental communities.
+
+#Initial setup
+```{r, echo=FALSE,results='hide', message=FALSE, warning=FALSE}
+# Setup working environment
+rm(list = ls())
+#setwd("~/Github/flow-cytometry/")
+setwd("C:/Users/Megan/Github/flow-cytometry/analyses")
+
+# Packages
+
+```
+
+All analyses were completed with `r sessionInfo()$R.version$version.string`.
+
+
+#FIGURE 1: CONCEPTUAL OPVERVIEW
+```{r fig.width=4, fig.height=4,echo=FALSE,fig.cap="Methodological Concept"}
+library(png)
+library(grid)
+img <- readPNG("../figures/Figure1.png")
+grid.raster(img)
+```
+
+#FIGURE 2: TIMECOURSE ACTIVITY IN LAB CULTURED STRAINS
+
+Data for this figure was generated from `flowDataScript.R`.
+
+```{r echo=FALSE}
+#for each culture in list, pull data and merge for figure generation
+#sample information, time(hours), etc.
+
+
+```
+
+#FIGURE 3: ACTIVITY OF ENVIRONMENTAL STRAINS
+
+```{r fig.width = 7.5, fig.height = 4, fig.cap="IN Pond" }
+
+# Other pond files can be found in the following path
+#path <- "../../Dimensions/Aim3/DATA/FlowCytometryData/output/data/"
+
+
+pop.dat <- read.csv("../data/061815_BCSP_015.fcs.csv", header = TRUE)
+
+head(pop.dat)
+pop.dat <- pop.dat[,-1]
+colnames(pop.dat) <- c("DNA","RNA","RDratio")
+# 
+png(filename = "../figures/figure3.png", width = 1800, height = 1000, res = 96*2)
+par(mfrow = c(1,2))
+plot(pop.dat$DNA,pop.dat$RNA,
+   xlab = "DNA(Pacific Blue-A)", ylab = "RNA(Pyronin Y)", 
+   xlim = c(0,4), ylim = c(0,3.5), 
+   las = 1)
+  #points(RDratio, col = "red")
+abline(0, 1, col = "red", lwd = 2)
+  
+d <- density(pop.dat$RDratio,
+             adjust = 10, kernel = "gaussian",
+             from = -1, to = 10, n = 512)
+plot(d, las = 1, main = NA)
+abline(v = mean(pop.dat$RDratio), col = "red", lwd = 2)
+abline(v = median(pop.dat$RDratio), col = "blue", lwd = 2)
+
+legend("topright", c("RNA/DNA mean", "RNA/DNA median"), col = c("red","blue"), lwd = 2, bty = 'n')
+
+dev.off()
+graphics.off()
+
+```
+
