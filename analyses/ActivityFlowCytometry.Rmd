@@ -48,10 +48,38 @@ Data for this figure was generated from `flowDataScript.R`.
 
 #FIGURE 3: ACTIVITY OF ENVIRONMENTAL STRAINS
 
-```{r echo=FALSE}
-#for each culture in list, pull data and merge for figure generation
-#sample information, time(hours), etc.
+```{r fig.width = 7.5, fig.height = 4, fig.cap="IN Pond" }
 
+# Other pond files can be found in the following path
+#path <- "../../Dimensions/Aim3/DATA/FlowCytometryData/output/data/"
+
+
+pop.dat <- read.csv("../data/061815_BCSP_015.fcs.csv", header = TRUE)
+
+head(pop.dat)
+pop.dat <- pop.dat[,-1]
+colnames(pop.dat) <- c("DNA","RNA","RDratio")
+# 
+png(filename = "../figures/figure3.png", width = 1800, height = 1000, res = 96*2)
+par(mfrow = c(1,2))
+plot(pop.dat$DNA,pop.dat$RNA,
+   xlab = "DNA(Pacific Blue-A)", ylab = "RNA(Pyronin Y)", 
+   xlim = c(0,4), ylim = c(0,3.5), 
+   las = 1)
+  #points(RDratio, col = "red")
+abline(0, 1, col = "red", lwd = 2)
+  
+d <- density(pop.dat$RDratio,
+             adjust = 10, kernel = "gaussian",
+             from = -1, to = 10, n = 512)
+plot(d, las = 1, main = NA)
+abline(v = mean(pop.dat$RDratio), col = "red", lwd = 2)
+abline(v = median(pop.dat$RDratio), col = "blue", lwd = 2)
+
+legend("topright", c("RNA/DNA mean", "RNA/DNA median"), col = c("red","blue"), lwd = 2, bty = 'n')
+
+dev.off()
+graphics.off()
 
 ```
 

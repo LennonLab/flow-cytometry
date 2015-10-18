@@ -102,10 +102,11 @@ library(knitr)
 ## the column.pattern call imports only data that are associated with the -A columns
 
 # If loading info from server
-fs.controls <- read.flowSet(path = 'S:/FlowCytometry-INPonds/bch061815-controls', 
-                            pattern = ".fcs", transformation = FALSE,
-                            #alter.names = TRUE, column.pattern = ".A")
-                            column.pattern = "-A")
+#fs.controls <- read.flowSet(path = 'S:/FlowCytometry-INPonds/bch061815-controls', 
+#                            pattern = ".fcs", transformation = FALSE,
+#                            #alter.names = TRUE, column.pattern = ".A")
+#                            column.pattern = "-A")
+
 # If loading from harddrive
 fs.controls <- read.flowSet(path = 'F:/FlowCytometry-INPonds/bch061815-controls', 
                             pattern = ".fcs", transformation = FALSE,
@@ -673,15 +674,18 @@ colnames(results1) <- c("sample","ratio.min","ratio.max",
 # later iterations will need to account for beed count by sample
 bead.count <- 10000
 
+output.loc <- "C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/" 
+
 for(i in 1:length(sampleNames(actdorm))){
   DNA <- exprs(actdorm[[i]][,"Pacific Blue-A"])
   RNA <- exprs(actdorm[[i]][,"PI (B)-A"])
   RDratio <- RNA/DNA
   
   dat <- data.frame(DNA,RNA,RDratio)
-  #dat
+  write.csv(dat, file = paste("C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/",sampleNames(actdorm)[[i]],".csv", sep=""))
+  head(dat)
   
-  png(filename = paste("C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/",sampleNames(actdorm)[[i]],".png"),
+  png(filename = paste("C:/Users/Megan/GitHub/Dimensions/Aim3/DATA/FlowCytometryData/output/",sampleNames(actdorm)[[i]],".png", sep=""),
       width = 860, height = 480, units = "px", pointsize = 12,
       bg = "white")
   par(mfrow = c(1,2))
