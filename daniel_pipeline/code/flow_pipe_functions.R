@@ -81,8 +81,10 @@ choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
   par(def.par)  # reset to default
 
   # ask user for the number of clusters of interest
-  n2choose <- read.int("How many clusters will you choose?", low = 1, up = n)
-  
+  n2choose <- read.int("How many clusters will you choose?\n(choose 0 if no cluster is present)", low = 0, up = n)
+  if (!n2choose)
+    return(n2choose)
+    
   # ask user for the number assignments of clusters of interest
   clust.oi <- rep(NA,n2choose)
   for (i in 1:n2choose){
@@ -105,7 +107,7 @@ choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
 
 # select file and load it
 ######################
-setwd("D:/Box Sync/Lab/research/Bacillus phage/Data/DK4422_sporulation_DSM/FCM_sporulation_DSM_211217")
+setwd("C:/Users/danschw/github/flow-cytometry/daniel_pipeline/data")
 fcs.files <- list.files(pattern = ".fcs", full = TRUE)
 #for mean time I'll work on one file at a time
 print(matrix(c(1:length(fcs.files),fcs.files), ncol=2 ))
@@ -115,6 +117,7 @@ sample.name <- gsub(".fcs","",sample.name)
 
 x <- read.FCS(fcs.files, transformation=FALSE,alter.names = T)
 n.initial <- as.numeric(x@description$`$TOT`)
+setwd("../data")
 #have a look at the file 
 summary(x)
 
@@ -192,7 +195,7 @@ p4 <- recordPlot()
 gfp.clust <- flowClust(x.cells$cells, varNames=c("FSC.H", "BL1.H"), K=k.gfp, B=1000)
 
 #choose GFP positive cluster
-gfp.pos  <- choose.clust(clust2choose = "GFP positive",flow.frame = x.cells$cells, cluster =gfp.clust ,var1 ="FSC.H" ,var2 = "BL1.H",level = 0.98 )
+gfp.pos  <- choose.clust(clust2choose = "GFP positive\n(choose 0 if no GFP+ cluster is present)",flow.frame = x.cells$cells, cluster =gfp.clust ,var1 ="FSC.H" ,var2 = "BL1.H",level = 0.98 )
 gfp.pos  <- sort(gfp.pos )
 gfp.neg <- c(1:k.gfp)
 gfp.neg <- gfp.neg[!(gfp.neg %in% gfp.pos)]
@@ -268,6 +271,8 @@ while (!(sv=="y" | sv=="n")){
   }
 
 if (sv=="y"){
+  setwd("../output/")
+  write.csv(colnames(n.events),file = "colnames.csv", row.names = F, col.names = F)
   write.table(n.events, "A1_gatedByGFP.csv", sep=",",dec = ".",qmethod = "double"  ,append = T, col.names = F)
   
   pdf(file=paste(sample.name,".pdf", sep = ""), paper="a4r")
@@ -278,6 +283,7 @@ if (sv=="y"){
   print(p5)
   print(p6)
   dev.off()
+  setwd("../")
 }  
 
 
