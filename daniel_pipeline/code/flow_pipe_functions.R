@@ -99,6 +99,15 @@ choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
 }
 #####
 
+# save plots
+#############################
+save.png <- function (what, sample.name){
+    f.name <- paste0(what, sample.name,".png")
+    dev.copy(device = png,filename = f.name,res = 300,width = 120, height = 100, units = "mm")
+    dev.off()
+}
+#####
+
 #####################
 #                   #
 #   Main Code       #
@@ -115,13 +124,21 @@ fcs.files <- fcs.files[read.int (message = "choose file number", low = 1, up = l
 sample.name <- gsub("./","",fcs.files)
 sample.name <- gsub(".fcs","",sample.name)
 
+# save results if user wants to...
+sv <- "a"
+while (!(sv=="y" | sv=="n")){
+  sv <- readline(prompt = "Do you want to save these results? [y/n] ")
+  if (!(sv=="y" | sv=="n"))
+    message("bad input, try again...")
+}
+
 x <- read.FCS(fcs.files, transformation=FALSE,alter.names = T)
 n.initial <- as.numeric(x@description$`$TOT`)
-setwd("../data")
+
 #have a look at the file 
-summary(x)
+# summary(x)
 
-
+setwd("../output")
 #####
 
 # shift fluoresence values into positive nums
@@ -135,7 +152,8 @@ neg <- min(x@exprs[,"BL1.A"])
 neg <- -plyr::round_any(neg,1000, floor)
 x@exprs[,"BL1.A"] <- x@exprs[,"BL1.A"]+neg
 rm(neg)
-summary(x)
+#have a look at the file 
+# summary(x)
 
 n.initial <- as.numeric(x@description$`$TOT`)
 #####
@@ -143,13 +161,15 @@ n.initial <- as.numeric(x@description$`$TOT`)
 # filter out doublets
 ####################################
 # this done by taking the main cluster of FSC height.area ratio (using single cluster: k=1)
-singlets.clust <- flowClust(x, varNames=c("FSC.A", "FSC.H"), K=1, B=1000, level=0.99)
+singlets.clust <- flowClust(x, varNames=c("FSC.A", "FSC.H"), K=1, B=1000, level=0.995)
 n.singlets <- sum(!is.na(Map(singlets.clust)))
-plot(singlets.clust, data=x, log="xy", level=0.99,
+
+plot(singlets.clust, data=x, log="xy", level=0.995,
      main= paste("cluster of singlets ", 100*n.singlets/n.initial, "%"))
 
-p1 <- recordPlot()
-# summary(singlets.clust)
+if (sv=="y")
+    save.png(what = "singlets", sample.name)
+    
 
 #filter outliers
 x.singlets <- x[x %in% singlets.clust]
@@ -167,14 +187,18 @@ x.trans <- transform(x.singlets,`FSC.H` =log(`FSC.H`), `SSC.H` =log(`SSC.H`),`BL
 ## gate to filter noise
 # use the BIC plot to choose the number of clusters (the number where curve starts to saturate)
 k.noise<- clust.num( "noise",flow.frame = x.trans, var1 = "FSC.H", var2 = "SSC.H", k.low = 1, k.up = 5)
-p2 <- recordPlot()
+
+if (sv=="y")
+  save.png(what = "noiseKchoice", sample.name)
+
 # cluster using number chosen
 noise.clust <- flowClust(x.trans, varNames=c("FSC.H", "SSC.H"), K=k.noise, B=1000)
 
 # choose which cluster is noise
 noise.clust.num <- choose.clust("noise",flow.frame = x.trans, cluster =noise.clust ,var1 ="FSC.H" ,var2 = "SSC.H",level = 0.98 )
 noise.clust.num <- sort(noise.clust.num)
-p3 <- recordPlot()
+if (sv=="y")
+  save.png(what = "noiseGate", sample.name)
 
 # filter out the noise cluster
 noise.filter <- tmixFilter("noise.filter",c("FSC.H", "SSC.H"), K=k.noise, B=1000, level=0.95)
@@ -190,7 +214,8 @@ x.cells <- split(x.trans, noise.filter, population=list(cells=cells.clust.num, n
 
 # use the BIC plot to choose the number of clusters (the number where curve starts to saturate)
 k.gfp<- clust.num("GFP", flow.frame = x.cells$cells, var1 = "FSC.H", var2 = "BL1.H", k.low = 1, k.up = 5)
-p4 <- recordPlot()
+if (sv=="y")
+  save.png(what = "GfpKchoice", sample.name)
 # cluster using number chosen
 gfp.clust <- flowClust(x.cells$cells, varNames=c("FSC.H", "BL1.H"), K=k.gfp, B=1000)
 
@@ -199,7 +224,8 @@ gfp.pos  <- choose.clust(clust2choose = "GFP positive\n(choose 0 if no GFP+ clus
 gfp.pos  <- sort(gfp.pos )
 gfp.neg <- c(1:k.gfp)
 gfp.neg <- gfp.neg[!(gfp.neg %in% gfp.pos)]
-p5 <- recordPlot()
+if (sv=="y")
+  save.png(what = "GfpGate", sample.name)
 
 
 #split the populations by GFP gate
@@ -224,7 +250,10 @@ df.noise <- as.data.frame(exprs(x.cells$noise))
 
 #plot all points together colored by gates
 par(def.par)
-par(mfrow=c(1,2))
+# par(mfrow=c(1,2))
+
+layout(matrix(c(1,2,3,3), 2, 2, byrow = TRUE), heights = c(9,1))
+# par(mar = c(1,3,1,1))
 #project gated events on FSC X BL1
 plot (log(df.all$FSC.H), log(df.all$BL1.H),col="black" , pch=20, cex=0.1,
       xlab="FSC-H (log)", ylab= "GFP-H (log)", main=sample.name)
@@ -232,8 +261,8 @@ points (log(df.sing$FSC.H), log(df.sing$BL1.H), pch=20 ,col="grey" , cex=0.1)
 points (df.noise$FSC.H, df.noise$BL1.H, pch=20 ,col="blue" , cex=0.1)
 points (df.gfp.pos$FSC.H, df.gfp.pos$BL1.H, pch=20 ,col="green" , cex=0.1)
 points (df.gfp.neg$FSC.H, df.gfp.neg$BL1.H, pch=20 ,col="red", cex=0.1)
-legend("topleft", legend = c("doublets", "noise", "GFP+", "GFP-"),
-       col=c("black", "blue", "green", "red"), pch=20)
+# legend("topleft", legend = c("doublets", "noise", "GFP+", "GFP-"),
+#        col=c("black", "blue", "green", "red"), pch=20)
 #project gated events on FSC X BL1
 plot (log(df.all$FSC.H), log(df.all$SSC.H),col="black" , pch=20, cex=0.1,
       xlab="FSC-H (log)", ylab= "SSC-H (log)", main=sample.name)
@@ -241,10 +270,16 @@ points (log(df.sing$FSC.H), log(df.sing$SSC.H), pch=20 ,col="grey" , cex=0.1)
 points (df.noise$FSC.H, df.noise$SSC.H, pch=20 ,col="blue" , cex=0.1)
 points (df.gfp.pos$FSC.H, df.gfp.pos$SSC.H, pch=20 ,col="green" , cex=0.1)
 points (df.gfp.neg$FSC.H, df.gfp.neg$SSC.H, pch=20 ,col="red", cex=0.1)
-legend("topleft", legend = c("doublets", "noise", "GFP+", "GFP-"),
-       col=c("black", "blue", "green", "red"), pch=20)
+# legend("topleft", legend = c("doublets", "noise", "GFP+", "GFP-"),
+#        col=c("black", "blue", "green", "red"), pch=20)
+par(mar=c(0,0,0,0))
+plot.new()
+legend("center", legend = c("doublets", "noise", "GFP+", "GFP-"),
+       col=c("black", "blue", "green", "red"), pch=20,horiz = T, text.width=c(0.2,0.2))
+par(def.par)
 
-p6 <- recordPlot()
+if (sv=="y")
+  save.png(what = "SumPlots", sample.name)
 
 # write summary of gated events to file
 n.events <- data.frame(sample=sample.name,
@@ -262,29 +297,12 @@ n.events$undefined <- n.events$singlets-(n.events$noise+n.events$gfp.pos+n.event
 
 print(n.events)
 
-# save results if user wants to...
-sv <- "a"
-while (!(sv=="y" | sv=="n")){
-  sv <- readline(prompt = "Do you want to save these results? [y/n] ")
-  if (!(sv=="y" | sv=="n"))
-    message("bad input, try again...")
-  }
+
 
 if (sv=="y"){
-  setwd("../output/")
   write.csv(colnames(n.events),file = "colnames.csv", row.names = F, col.names = F)
-  write.table(n.events, "A1_gatedByGFP.csv", sep=",",dec = ".",qmethod = "double"  ,append = T, col.names = F)
-  
-  pdf(file=paste(sample.name,".pdf", sep = ""), paper="a4r")
-  print(p1)
-  print(p2)
-  print(p3)
-  print(p4)
-  print(p5)
-  print(p6)
-  dev.off()
-  setwd("../")
+  write.table(n.events, "gatedByGFP.csv", sep=",",dec = ".",qmethod = "double"  ,append = T, col.names = F)
 }  
 
-
+setwd("../")
     
