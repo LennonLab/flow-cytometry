@@ -19,8 +19,8 @@ library(ggcyto)
 read.int <- function (message, low, up){
   #check input is whole numbers
   chk <- sum(is.na(as.integer(c(low,up))))
-    if (chk){
-      message("bad input for 'low' or 'up'")
+  if (chk){
+    message("bad input for 'low' or 'up'")
     return(NA)
   }
   
@@ -29,7 +29,7 @@ read.int <- function (message, low, up){
                                    "between ", low, " and ", up, "\n")))
   
   ## check input from user
-    #check for number
+  #check for number
   if (!is.na(num))
     if (num >= low)
       if(num <= up)
@@ -47,7 +47,7 @@ clust.num <- function (gate, flow.frame, var1, var2, k.low, k.up){
   clusts <- flowClust(flow.frame, varNames=c(var1, var2), K=k.low:k.up, B=100)
   par (mfrow=c(2,3))
   for(i in 1:k.up)
-    print(plot (clusts[[i]], data=flow.frame, subset=c(var1, var2), level=0.95))
+    print(plot (clusts[[i]], data=flow.frame, subset=c(var1, var2), level=0.9))
   #plot BIC of bove atempts at clustering
   print(plot (k.low:k.up,criterion(clusts, "BIC"), type="b", main=paste("choose 'k' for",gate)))
   par(def.par)  # reset to default
@@ -60,7 +60,7 @@ clust.num <- function (gate, flow.frame, var1, var2, k.low, k.up){
 }
 #####
 
- 
+
 # function to choose cluster(s) of interest
 #############################################
 choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
@@ -68,33 +68,33 @@ choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
   n<- cluster@K
   
   #plot out clusters and histograms to inform the user when he makes choice
-      layout(matrix(c(1,2,4,3), 2, 2, byrow = TRUE), heights = c(1,3))
-      par(mar = c(1,3,1,1))
-      print(hist(cluster, data = flow.frame, subset = var1, main=var1,col= c(2:(n+1))))
-      print(hist(cluster, data = flow.frame, subset = var2, main=var2,col= c(2:(n+1))))
-      par(mar = c(3,3,1,1))
-      print(plot(cluster, data=flow.frame, subset=c( var1, var2), level=level))
-      par (mar = def.par$mar)
-      plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      text(x = 0.5, y = 0.5, paste0("choose the\n", clust2choose, "\ncluster(s)\n(how many and which)"))
-      legend("topright", legend = c(1:n), col= c(2:(n+1)), lty=1, lwd=5)
+  layout(matrix(c(1,2,4,3), 2, 2, byrow = TRUE), heights = c(1,3))
+  par(mar = c(1,3,1,1))
+  print(hist(cluster, data = flow.frame, subset = var1, main=var1,col= c(2:(n+1))))
+  print(hist(cluster, data = flow.frame, subset = var2, main=var2,col= c(2:(n+1))))
+  par(mar = c(3,3,1,1))
+  print(plot(cluster, data=flow.frame, subset=c( var1, var2), level=level))
+  par (mar = def.par$mar)
+  plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+  text(x = 0.5, y = 0.5, paste0("choose the\n", clust2choose, "\ncluster(s)\n(how many and which)"))
+  legend("topright", legend = c(1:n), col= c(2:(n+1)), lty=1, lwd=5)
   par(def.par)  # reset to default
-
+  
   # ask user for the number of clusters of interest
   n2choose <- read.int("How many clusters will you choose?\n(choose 0 if no cluster is present)", low = 0, up = n)
   if (!n2choose)
     return(n2choose)
-    
+  
   # ask user for the number assignments of clusters of interest
   clust.oi <- rep(NA,n2choose)
   for (i in 1:n2choose){
-        while (is.na(clust.oi[i])){
-        clust.oi[i] <- read.int(paste(i, ") choose number assignment of cluster: "), low = 1, up = n)
-              # check that the numbers enterd are different
-              if (anyDuplicated(clust.oi[!is.na(clust.oi)])){
-                message("same number chosen twice")
-                clust.oi[i] <- NA
-  }}}
+    while (is.na(clust.oi[i])){
+      clust.oi[i] <- read.int(paste(i, ") choose number assignment of cluster: "), low = 1, up = n)
+      # check that the numbers enterd are different
+      if (anyDuplicated(clust.oi[!is.na(clust.oi)])){
+        message("same number chosen twice")
+        clust.oi[i] <- NA
+      }}}
   return(clust.oi)
 }
 #####
@@ -102,9 +102,9 @@ choose.clust <- function (clust2choose, flow.frame, cluster, var1, var2, level){
 # save plots
 #############################
 save.png <- function (what, sample.name){
-    f.name <- paste0(what, sample.name,".png")
-    dev.copy(device = png,filename = f.name,res = 300,width = 120, height = 100, units = "mm")
-    dev.off()
+  f.name <- paste0(what, sample.name,".png")
+  dev.copy(device = png,filename = f.name,res = 300,width = 120, height = 100, units = "mm")
+  dev.off()
 }
 #####
 
@@ -116,12 +116,15 @@ save.png <- function (what, sample.name){
 
 # select file and load it
 ######################
-setwd("C:/Users/danschw/github/flow-cytometry/daniel_pipeline/data")
-fcs.files <- list.files(pattern = ".fcs", full = TRUE)
+set <- "mix_x10"
+
+setwd("C:/Users/danschw/github/flow-cytometry/daniel_pipeline/files")
+fcs.files <- list.files(pattern = ".fcs", full = TRUE, recursive = T)
+fcs.files <- fcs.files[grep(set,x = fcs.files)]
 #for mean time I'll work on one file at a time
 print(matrix(c(1:length(fcs.files),fcs.files), ncol=2 ))
 fcs.files <- fcs.files[read.int (message = "choose file number", low = 1, up = length(fcs.files))]
-sample.name <- gsub("./","",fcs.files)
+sample.name <- gsub("./.*/","",fcs.files)
 sample.name <- gsub(".fcs","",sample.name)
 
 # save results if user wants to...
@@ -168,8 +171,8 @@ plot(singlets.clust, data=x, log="xy", level=0.995,
      main= paste("cluster of singlets ", 100*n.singlets/n.initial, "%"))
 
 if (sv=="y")
-    save.png(what = "singlets", sample.name)
-    
+  save.png(what = "singlets", sample.name)
+
 
 #filter outliers
 x.singlets <- x[x %in% singlets.clust]
@@ -195,13 +198,13 @@ if (sv=="y")
 noise.clust <- flowClust(x.trans, varNames=c("FSC.H", "SSC.H"), K=k.noise, B=1000)
 
 # choose which cluster is noise
-noise.clust.num <- choose.clust("noise",flow.frame = x.trans, cluster =noise.clust ,var1 ="FSC.H" ,var2 = "SSC.H",level = 0.98 )
+noise.clust.num <- choose.clust("noise",flow.frame = x.trans, cluster =noise.clust ,var1 ="FSC.H" ,var2 = "SSC.H",level = 0.9 )
 noise.clust.num <- sort(noise.clust.num)
 if (sv=="y")
   save.png(what = "noiseGate", sample.name)
 
 # filter out the noise cluster
-noise.filter <- tmixFilter("noise.filter",c("FSC.H", "SSC.H"), K=k.noise, B=1000, level=0.95)
+noise.filter <- tmixFilter("noise.filter",c("FSC.H", "SSC.H"), K=k.noise, B=1000, level=0.9)
 
 # split data to cells and noise
 cells.clust.num <-c(1:k.noise)
@@ -220,7 +223,7 @@ if (sv=="y")
 gfp.clust <- flowClust(x.cells$cells, varNames=c("FSC.H", "BL1.H"), K=k.gfp, B=1000)
 
 #choose GFP positive cluster
-gfp.pos  <- choose.clust(clust2choose = "GFP positive\n(choose 0 if no GFP+ cluster is present)",flow.frame = x.cells$cells, cluster =gfp.clust ,var1 ="FSC.H" ,var2 = "BL1.H",level = 0.98 )
+gfp.pos  <- choose.clust(clust2choose = "GFP positive\n(choose 0 if no GFP+ cluster is present)",flow.frame = x.cells$cells, cluster =gfp.clust ,var1 ="FSC.H" ,var2 = "BL1.H",level = 0.9 )
 gfp.pos  <- sort(gfp.pos )
 gfp.neg <- c(1:k.gfp)
 gfp.neg <- gfp.neg[!(gfp.neg %in% gfp.pos)]
@@ -229,13 +232,13 @@ if (sv=="y")
 
 
 #split the populations by GFP gate
-gfp.filter <- tmixFilter("gfp.filter",c("FSC.H", "BL1.H"), K=k.gfp, B=100, level=0.98)
+gfp.filter <- tmixFilter("gfp.filter",c("FSC.H", "BL1.H"), K=k.gfp, B=100, level=0.9)
 if (sum(gfp.pos))
   x.gfp <- split(x.cells$cells, gfp.filter, population=list(pos=gfp.pos, neg=gfp.neg))
 if(!sum(gfp.pos)) # this deals with case of no GFP+ cluster
   x.gfp <- split(x.cells$cells, gfp.filter, population=list(neg=gfp.neg))
 
-  
+
 #####
 
 # summarizing the results
@@ -305,4 +308,4 @@ if (sv=="y"){
 }  
 
 setwd("../")
-    
+

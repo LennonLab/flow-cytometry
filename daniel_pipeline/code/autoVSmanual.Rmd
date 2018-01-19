@@ -1,0 +1,414 @@
+---
+title: "Automatic VS Manual Gating"
+author: "Daniel Schwartz"
+date: "January 18, 2018"
+output: html_document
+---
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE}
+rm (list=ls())
+# dev.off()
+
+#load libraries
+library(tidyverse)
+library(readr)
+library(scales)
+```
+
+## Introduction
+
+The aim of this analysis is to compare a flowcytometry (FCM) gating pipeline I have built in R with manual gating results done in the ACEA NovoExpress software (proprietary software of the machine). For this comparison I generated a data set of FCM measurements which include 2X serial dilutions of *Bacillus subtilis* and mixed samples of GFP+/- populations in a series of ratios.
+
+## The automatic-gating pipeline
+The purpose of building this pipeline was so I could analyze FCM data in an objective and reproducible manner, over many samples. Traditionally FCM data is analysed manually - marking population by eye on 2D scatter plots. However there appears to be a community effort to change this to enable objective and high throughput analysis by building tools that automate analysis. It seems that R has been a favorite among these developers resulting in many R packages (nearly 50 by searching for FlowCytometry in BiocViews (https://www.bioconductor.org/packages/devel/BiocViews.html)
+
+The pipeline I built is not fully automatic, it still requires that I go over several plots for each sample. However I use the flowClust function (https://doi.org/doi:10.18129/B9.bioc.flowClust) to automaticaly apply gates on the populations. This is done in 2 steps:  
+1) choosing the number of clusters.  
+2) choosing which clusters are part of a group of interest.  
+
+The pipeline as I have built it here goes through the following steps:  
+1. Excluding doublets that deviate from the central cluster of FSC height VS area.  
+2. Excluding noise - based on measurement of PBS only samples I have found the the bottom-left cluster on an FSC-H VS SSC-H plot is not cells. In this step that cluster is identified and filtered out. What is left are cells.  
+3. Separating cells into GFP-positive and GFP-negative cells by clustering on a 2D scatter plot of BL1-H (GFP) VS FSC-H.  
+
+The pipe line is run by sourcing the flow_pipe.R file and making numeric choices in the R console.
+
+Each time a single sample is processed. Plots generated along the way are saved as PNG files and a summary line is added to a CSV file with the results and the choices made by user in each step.
+
+
+## The Dataset
+
+All the data here were acquired with an ACEA Novocyte 2000r equipped with a NovoSampler Pro. Measurement channels included FSC, SSC and BL1 (Excitation by 488nm LASER ; Emission filter 530/30nm). The instrument was set to acquire up to 20,000 events or 50mcl (the first reached) at a slow flow rate. Event threshold >1000 was set for both FSC-H and SSC-H.
+
+The samples are of *Bacillus subtilis* DK4422 [amyE::PcotYZ-GFP cat, ycgO::PsigA-mRFP mars mls]. Relevant to this experiment, this strain expresses GFP under the regulation of a sporulation gene cotY, detected using BL1. 
+
+The samples come from a sporulation time series using the exhaustion method. T0 is the time at which cells were transferred to DSM. Samples were diluted x10 in PBS, fixed with formalin and stored in 4dC. The **T3** sample is used as a population that does not have GFP-positive cells. The **T9** Sample has a strong signal of GFP expression, though it is not in 100% of the population (from below it is estimated to be ~60%). Note that T9 has less overall cells than T3 (this was seen also in colony plating. T3: 1.6x10^8^CFU/ml; T9: 6.3X10^7^CFU/ml. n=1).
+
+The data set includes two types of calibration curves: 1) 2-fold serial dilutions of T3 and T9 2) mixes of the two samples at different mixing ratios.
+
+###serial dilutions  
+The purpose of this assay is to see if overall cell quantification is consistent across known dilutions.  
+each of the original samples was diluted serially in an equal volume of PBS up to 2^-6^. all dilutions were further diluted X2 in PBS before FCM measurement. thus total dilution of a sample is 10 (initial dilution before fixation) X2 (final dilution)/dilution factor (2^0^-2^-6^).
+
+###mixed populations
+The purpose of this assay was to test if the relative quantification of GFP -positive and -negative cells in a population is consistent with known mixing ratios. Here non-diluted fixed samples of T3 and T9 were mixed with T9 composing 0%, 20%, 40%, 60%, 80% and 100% of the population (by volume). These mixes were than diluted both X2 and X10 in PBS before FCM measurement. Thus together with pre-fixation dilution these samples have a total dilution of X20 (as above) and X100.
+
+Note that since the T9 population is not 100% GFP-positive, the GFP-positive fraction in a mix is expected to be:  
+*[fraction of GFP-positive in T9] X [fraction of T9 in mix]*
+
+Absolute quantification relies on the recording of the volume of sample processed by the FCM.
+
+
+```{r , echo = FALSE,warning=FALSE, message=FALSE}
+# Load manual gating data
+############################
+setwd("C:/Users/danschw/github/flow-cytometry/daniel_pipeline")
+#read in the data of manual gating
+man.d <- read_csv("./files/manual_gating.csv", col_names = T)
+colnames(man.d) <-
+  gsub(pattern = ' ', replacement = '.', colnames(man.d))
+colnames(man.d) <-
+  gsub(pattern = 'Abs.', replacement = 'Abs', colnames(man.d))
+#filter out the measurments I did to choose the samples to analyze
+man.d <- filter(.data = man.d, Specimen != "rerun")
+#filter out the no cell control
+man.d <- filter(.data = man.d, Sample != "PBS")
+#make sample name match that of the auto-gating dataset
+man.d$sample <- paste(man.d$Specimen,man.d$Sample,sep="_")
+# #add undefined column
+# man.d$undefined.Count <- man.d$singlets.Count-(man.d$GFP.neg.Count+man.d$GFP.pos.Count)
+# man.d[(man.d$GFP.neg.Count+man.d$GFP.pos.Count > man.d$cells.Count),c("GFP.neg.Count","GFP.pos.Count","cells.Count")]
+#####
+
+# Load auto gating data
+############################
+#read in the data of gating
+auto.d <- read_csv("./output/gatedByGFP.csv", col_names = F)
+# filter out double rows
+auto.d <- distinct(auto.d, sample, .keep_all = TRUE)
+name <- (read.csv(file = "./output/colnames.csv", header = F, as.is = T))
+# modify to match names in manual set
+name <- c("x","sample","k.noise","noise.clust.num","k.gfp","gfp.pos.num","volume","All.Count","singlets.Count","noise.Count","GFP.pos.Count","GFP.neg.Count","undefined.Count")
+colnames(auto.d) <- name
+auto.d$cells.Count <- 
+  auto.d$GFP.neg.Count+auto.d$GFP.pos.Count
+rm(name)
+
+
+# use volume to calculate absolute counts
+  auto.d$abs.conversion <- 
+    20/(auto.d$volume/1e6) #20 is dilution factor, 1e6 to convert from mcl to ml
+  #mix_x10 have a different dilution factor (x100)
+  x10 <- grep("x10",auto.d$sample)
+  auto.d$abs.conversion[x10] <- 5*auto.d$abs.conversion[x10] 
+  rm(x10)
+  # Total events
+  auto.d$All.Abs.Count <-
+    auto.d$All.Count*auto.d$abs.conversion
+  # total cells
+  auto.d$cells.Abs.Count <-
+    auto.d$cells.Count*auto.d$abs.conversion
+  # GFP positive
+  auto.d$GFP.pos.Abs.Count <- 
+    auto.d$GFP.pos.Count*auto.d$abs.conversion
+  # GFP negative
+  auto.d$GFP.neg.Abs.Count <- 
+    auto.d$GFP.neg.Count*auto.d$abs.conversion
+  # doublets
+  auto.d$doublets.Count <- auto.d$All.Count - auto.d$singlets.Count
+# put the 2 data sets together
+  # in long format
+  man.d2 <-
+    man.d[,colnames(man.d) %in% colnames(auto.d)]
+  auto.d2 <-
+    auto.d[,colnames(auto.d) %in% colnames(man.d)]
+  auto.d2$pipe <- "auto"; man.d2$pipe <- "manual"
+  dl <- rbind.data.frame(man.d2,auto.d2)
+  rm(man.d2,auto.d2)
+  
+  #in short format
+  #mark each one uniquely
+  colnames(man.d) <-
+    paste0 ("man.",colnames(man.d))
+  colnames(auto.d) <-
+    paste0 ("auto.",colnames(auto.d))
+  d <- merge.data.frame(x = man.d, y = auto.d,
+                        by.x = "man.sample", by.y = "auto.sample")
+#####
+```
+
+**In the following plots I have used black lines to indicate expected trends : 1:1 when comparing manual vs auto gating and the expected decay based on known dilutions and mixing ratios.**
+
+##FCM event count distribution  
+
+###Overview  
+How are the events distributed among the different bins? looking at the 2 plots below it appears that the auto-gating assigns a smaller number of the events to cells, and these get turned over to the noise and undefined bins which are bigger using auto-gating. The number of events assigned to noise are similar in the 2 pipelines. 
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+# Summarize
+  dvl <- gather(dl,key = gate, value = events, noise.Count,cells.Count,doublets.Count,undefined.Count)
+  dvl$gate <- gsub (".Count", "", dvl$gate)
+
+  dvl<- distinct(dvl, interaction(sample,gate,pipe), .keep_all = TRUE)
+  dvl$Assay <- NA;  dvl$dilution <- NA
+  for (i in 1:nrow(dvl)){
+    splt <- unlist(strsplit(dvl$sample[i], split = "_"))
+    dvl$Assay[i] <- paste(splt[1],splt[2], sep="_")
+    if (length(splt)==3)
+      dvl$dilution[i] <- splt[3]
+    else dvl$dilution[i] <- paste(splt[5],splt[6], sep="_")
+  } 
+    
+
+  
+  ggplot(dvl, aes(x=dilution, y=events))+
+    geom_bar(aes(fill=gate), stat = "identity")+ coord_flip() +
+    facet_grid(pipe~.)+ theme_bw()+
+    facet_grid(pipe~Assay)
+
+  ggplot(dvl, aes(x=gate, y=events))+
+    geom_boxplot(aes(fill=pipe))+ theme_bw()+
+    facet_wrap(~Assay)
+    
+```
+
+
+### Events excluded as doublets  
+There does not seem to be any trend here except for that seen above - auto-gating counts more events as doublets. Even so, in auto gating this is kept below 1000 events.  
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.doublets.Count/man.All.Count, y=auto.doublets.Count/auto.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+  ggtitle("All together")+
+    expand_limits(x = 0, y = 0)+
+    ylab("doublets fraction - manual")+xlab("doublets fraction - auto")
+
+ ggplot(d, aes (x=man.doublets.Count/man.All.Count, y=auto.doublets.Count/auto.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+  ggtitle("All together")+
+    expand_limits(x = 0, y = 0)+
+    ylab("doublets fraction - manual")+xlab("doublets fraction - auto")
+```
+
+### Events excluded as noise
+Here counting is as expected - similar numbers of events are gated as noise in both gating methods. Some deviation from the 1:1 ratio is seen in the dilution series of the *T9* sample.
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.noise.Count, y=auto.noise.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+  ggtitle("All together")
+
+  ggplot(d, aes (x=man.noise.Count, y=auto.noise.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+ ggtitle("By assay")
+```  
+
+What drives noise level? A major source of noise is the PBS in which cells are diluted. Therefore we can expect that the more of the sample that needs to be processed by FCM to reach the threshold the more noise we'll get. The plots below show that this is indeed the case. It seems that generally we would like to stay below 10mcl to keep the noise down. this can be achieved by re-running low-concentration samples with a lower final dilution.  
+Still, there is a difference in the level of noise between the *T3* and *T9* dilution series, even when the volumes are comparable. Could this be because spores are present and are being excluded as noise? I'll need to test this explicitly. In any case, the 2 gating systems are of comparable quality at separating noise from cells.
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+
+  ggplot(d, aes (x=auto.volume/1000, y=auto.noise.Count/auto.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+ ggtitle("Auto gating") + xlab("volume (mcl)") + ylab("fraction of noise events")
+  
+    ggplot(d, aes (x=auto.volume/1000, y=man.noise.Count/man.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+ ggtitle("Manual gating")+ xlab("volume (mcl)") + ylab("fraction of noise events")
+    
+```
+
+### undefined events
+Similar to what was seen in the doublets, for undefined cells we see larger counts when auto-gating is used. However the numbers of undefined cells rises from less than 5% to ~10% of total events. I see no obvious trend in 
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.undefined.Count/man.All.Count, y=auto.undefined.Count/auto.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+  ggtitle("All together")+
+    expand_limits(x = 0, y = 0)+
+    ylab("undefined fraction - manual")+xlab("undefined fraction - auto")
+
+ ggplot(d, aes (x=man.undefined.Count/man.All.Count, y=auto.undefined.Count/auto.All.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+  ggtitle("By Assay")+
+    expand_limits(x = 0, y = 0)+
+    ylab("undefined fraction - manual")+xlab("undefined fraction - auto")
+```
+
+## Manual Vs Auto in cell numbers
+
+###Total cells.
+I expect to get similar cell numbers from the manual and automatic gates. Overall the 2 methods result in very similar numbers which are in high agreement with each other. That said, here too we can see that the lower counts of cells in auto-gating results in lower calculated cell concentrations, and that the discrepancy increases with total concentration. These same trends are maintained also when the total cell numbers are divided into GFP positive and negative cells.      
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.cells.Abs.Count, y=auto.cells.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw() +  ggtitle("All together")
+
+  ggplot(d, aes (x=man.cells.Abs.Count, y=auto.cells.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw() + ggtitle("By assay")
+  
+
+```
+
+### GFP positive cells    
+Similar to total cells.  
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.GFP.pos.Abs.Count, y=auto.GFP.pos.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+  ggtitle("All together")
+
+  ggplot(d, aes (x=man.GFP.pos.Abs.Count, y=auto.GFP.pos.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw()+ ggtitle("By assay")
+
+```
+
+### GFP negative cells    
+Similar to total cells.       
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+  ggplot(d, aes (x=man.GFP.neg.Abs.Count, y=auto.GFP.neg.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+  ggtitle("All together")
+
+  ggplot(d, aes (x=man.GFP.neg.Abs.Count, y=auto.GFP.neg.Abs.Count))+
+    geom_point(aes(color=man.Specimen))+
+    geom_abline(slope = 1,intercept = 0)+
+    geom_smooth(aes(color=man.Specimen),method = 'lm', se = FALSE)+
+    theme_bw() + ggtitle("By assay")
+  
+```
+
+# Analysis of dilution series  
+Here I expect to see a logarithmic decline of cell numbers with the progression of dilution. I added lines that represent this trend as "grid lines". In the series of plots following it is apparent that both pipelines enumerate cells in a manner consistent with dilution. This is true for total, GFP-positive and GFP-negative cells. These results indicate that this combination of experimental and analytical pipeline results in quantitative results.  
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+# split the data to dilution and mix series
+mix <- grepl (pattern = "mix", x = dl$sample)
+dl.mix <- dl[mix,]
+dl.dilution <- dl[!mix,]
+
+mix <- grepl (pattern = "mix", x = d$man.Specimen)
+d.mix <- d[mix,]
+d.dilution <- d[!mix,]
+
+#split long format name into metadata
+splt <-matrix(unlist(strsplit(dl.dilution$sample, split = "_")), ncol = 3, byrow = T)
+dl.dilution$time <- splt[,1]
+dl.dilution$assay <- splt[,2]
+dl.dilution$dilution.f <- as.numeric(splt[,3])
+dl.dilution$dilution <- as.numeric(gsub("2e", "",splt[,3]))
+#split short format name into metadata
+splt <-matrix(unlist(strsplit(d.dilution$man.sample, split = "_")), ncol = 3, byrow = T)
+d.dilution$time <- splt[,1]
+d.dilution$assay <- splt[,2]
+d.dilution$dilution.f <- as.numeric(splt[,3])
+d.dilution$dilution <- as.numeric(gsub("2e", "",splt[,3]))
+rm(splt)
+
+# generate expected line for X2 dilution series starting at 1e8
+x2 <- data.frame(x= c(0:6), y9= 1e9 * 2^c(0:-6), y8= 1e8 * 2^c(0:-6), y7= 1e7 * 2^c(0:-6),y6= 1e6 * 2^c(0:-6))
+x2 <- gather(data = x2, key = "y0", value = "y", y9,y8,y7,y6)
+# plot counts vs dilution
+ggplot(data = dl.dilution, mapping = aes(x=dilution, y=All.Abs.Count,color=time))+
+  geom_line(data = x2, mapping = aes(x=x, y=y, group=y0), color="grey50" )+
+  geom_smooth(method = 'lm' )+
+  geom_point()+
+  theme_bw() + scale_x_continuous(labels = scales::math_format(2^-.x)) +
+  scale_y_log10(labels =trans_format("log10", math_format(10^.x)) )+
+  facet_grid(.~pipe) +ggtitle('All events')
+
+ggplot(data = dl.dilution, mapping = aes(x=dilution, y=GFP.pos.Abs.Count,color=time))+
+  geom_line(data = x2, mapping = aes(x=x, y=y, group=y0), color="grey50" )+
+  geom_smooth(method = 'lm' )+
+  geom_point()+
+  theme_bw() + scale_x_continuous(labels = scales::math_format(2^-.x)) +
+  scale_y_log10(labels =trans_format("log10", math_format(10^.x)) )+
+  facet_grid(.~pipe)+ggtitle('GFP positive events')
+
+
+ggplot(data = dl.dilution, mapping = aes(x=dilution, y=GFP.neg.Abs.Count,color=time))+
+  geom_line(data = x2, mapping = aes(x=x, y=y, group=y0), color="grey50" )+
+  geom_smooth(method = 'lm' )+
+  geom_point()+
+  theme_bw() + scale_x_continuous(labels = scales::math_format(2^-.x)) +
+  scale_y_log10(labels =trans_format("log10", math_format(10^.x)) )+
+  facet_grid(.~pipe) + ggtitle('GFP negative events')
+
+```
+
+# Analysis of mixed samples  
+An important part of FCM analysis is its ability to separate populations of cells, as here I go based on GFP expression. I now look explicitly at this by analyzing populations of similar sizes (though not equal as T3>T9 and the mixing ratios assumed equal sizes.) I use the T3 and T9 only populations to draw the expected line of the fraction of GFP-positive cells.  
+For both analysis pipelines we that the fraction of GFP-positive cells is slightly underestimated. Nevertheless, both pipelines result in slopes that match the expected. This is independent of the concentration of cells that were actually analysed by FCM (compare X2 to X10 dilution).   
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE, out.width = "200%"}
+#split long format name into metadata
+splt <-matrix(unlist(strsplit(dl.mix$sample, split = "_")), ncol = 6, byrow = T)
+dl.mix$assay <- splt[,1]
+dl.mix$dilutionX <- splt[,2]
+dl.mix$T3 <- as.numeric(splt[,4])
+dl.mix$T9 <- as.numeric(splt[,6])
+dl.mix <- dl.mix[order(dl.mix$T9),]
+dl.mix$ratio <- 
+  dl.mix$GFP.pos.Abs.Count/(dl.mix$GFP.pos.Abs.Count+dl.mix$GFP.neg.Abs.Count)
+#split short format name into metadata
+splt <-matrix(unlist(strsplit(d.mix$man.sample, split = "_")), ncol = 6, byrow = T)
+d.mix$assay <- splt[,1]
+d.mix$dilutionX <- splt[,2]
+d.mix$T3 <- as.numeric(splt[,4])
+d.mix$T9 <- as.numeric(splt[,6])
+rm(splt)
+d.mix <- d.mix[order(d.mix$T9),]
+d.mix$man.ratio <- 
+  d.mix$man.GFP.pos.Abs.Count/(d.mix$man.GFP.pos.Abs.Count+d.mix$man.GFP.neg.Abs.Count)
+d.mix$auto.ratio <- 
+  d.mix$auto.GFP.pos.Abs.Count/(d.mix$auto.GFP.pos.Abs.Count+d.mix$auto.GFP.neg.Abs.Count)
+
+# plot ratios vs. expected
+ggplot(dl.mix, mapping = aes(x = T9, y = ratio))+
+  geom_abline(slope = 0.62,intercept = 0)+
+  geom_smooth(data = filter(dl.mix,T3>0 &T9>0),method = 'lm', se = F, aes(color=dilutionX))+
+  geom_point()+
+  geom_point(data = filter(dl.mix,T3>0 &T9>0), aes(color=dilutionX))+
+  facet_grid(.~pipe)+ theme_bw()+
+  ggtitle("GFP+ fraction (poitive/total) Vs. Excpected")+
+  xlab("fraction of T9 (by volume)") + ylab("fraction of GFP-positive cells")
+
+# plot ratios of manual vs. auto
+ggplot(d.mix, mapping = aes(x = man.ratio, y = auto.ratio))+
+  geom_abline(slope = 1,intercept = 0)+
+  geom_smooth(data = filter(d.mix,T3>0 &T9>0),method = 'lm', se = F)+
+  geom_point(data = d.mix, aes(color=dilutionX))+
+  ggtitle("GFP+ fraction (poitive/total) - Manual VS. Auto Gating") + theme_bw()+
+  ylab("fraction of GFP-positive cells - Auto") + xlab("fraction of GFP-positive cells - Manual")
+
+#filter(d.mix,T3>0 &T9>0)
+
+```
+
+#Summary  
+Overall it appears that using the auto-gating pipeline results in dependable quantification of cell populations and sub-populations.
